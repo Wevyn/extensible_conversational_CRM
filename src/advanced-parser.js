@@ -251,32 +251,41 @@ Return ONLY the JSON array with valid stage names:`;
   try {
     console.log('🚀 Attempting Groq API call...');
     
+    const groqRequestBody = {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: systemMessage
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 4000
+    };
+    
+    console.log('📤 Groq Request Body:', JSON.stringify(groqRequestBody, null, 2));
+    
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer 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',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: 'llama-3.1-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: systemMessage
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 4000
-      })
+      body: JSON.stringify(groqRequestBody)
     });
+
+    console.log('📥 Groq Response Status:', groqResponse.status);
+    console.log('📥 Groq Response Headers:', Object.fromEntries(groqResponse.headers.entries()));
 
     // Check if Groq succeeded
     if (groqResponse.ok) {
       const groqData = await groqResponse.json();
+      console.log('📊 Groq Response Data:', groqData);
+      
       const raw = groqData.choices?.[0]?.message?.content;
       
       if (raw) {
@@ -286,18 +295,40 @@ Return ONLY the JSON array with valid stage names:`;
         // Process the response with the same logic
         const processed = await processAIResponse(raw, dealAnalysis);
         return processed;
+      } else {
+        console.log('⚠️ Groq returned empty response, falling back to OpenRouter...');
+        console.log('📊 Full Groq Data:', groqData);
       }
     } else {
-      // Check if it's a rate limit error
-      const errorData = await groqResponse.json().catch(() => ({}));
+      // Get detailed error information
+      const errorText = await groqResponse.text();
+      console.log('❌ Groq Error Response Text:', errorText);
+      
+      let errorData = {};
+      try {
+        errorData = JSON.parse(errorText);
+        console.log('❌ Groq Error Data:', errorData);
+      } catch (parseErr) {
+        console.log('❌ Could not parse Groq error as JSON');
+      }
+      
       if (groqResponse.status === 429 || errorData.error?.type === 'rate_limit_exceeded') {
         console.log('⚠️ Groq rate limit hit, falling back to OpenRouter...');
+      } else if (groqResponse.status === 400) {
+        console.log('⚠️ Groq bad request (400) - possibly invalid model or request format, falling back to OpenRouter...');
+        console.log('🔍 Error details:', errorData.error?.message || 'No error message provided');
+      } else if (groqResponse.status === 401) {
+        console.log('⚠️ Groq authentication error (401) - check API key, falling back to OpenRouter...');
       } else {
         console.log(`⚠️ Groq API error (${groqResponse.status}), falling back to OpenRouter...`);
+        console.log('🔍 Error details:', errorData.error?.message || errorText);
       }
     }
   } catch (groqError) {
-    console.log('⚠️ Groq API failed, falling back to OpenRouter:', groqError.message);
+    console.log('⚠️ Groq API network/fetch error, falling back to OpenRouter:');
+    console.log('🔍 Error name:', groqError.name);
+    console.log('🔍 Error message:', groqError.message);
+    console.log('🔍 Error stack:', groqError.stack);
   }
 
   // Fallback to OpenRouter
