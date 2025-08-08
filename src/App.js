@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff } from 'lucide-react';
 import './speech-recorder.css';
-import { sendToAttio, initializeAttributeIds } from './advanced-attio.js';
-import { sendToAdvancedDeepSeek, ConversationContext } from './advanced-parser.js';
+// UPDATED IMPORT - Using the AttioCRMProcessor from CRMConnector.js
+import { AttioCRMProcessor } from './CRMConnector.js';
 
 const AdvancedSpeechRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -17,112 +17,117 @@ const AdvancedSpeechRecorder = () => {
     tasksCreated: 0,
     totalValue: 0
   });
+  const crmRef = useRef(null);
 
   const recognitionRef = useRef(null);
   const currentTextRef = useRef('');
   const fullTranscriptRef = useRef('');
   const triggeredRef = useRef(false);
   const crmCaptureRef = useRef('');
-  const conversationContextRef = useRef(new ConversationContext());
 
   const triggerPhrase = "initiate CRM";
 
-  // Initialize the advanced system
+  // Initialize the CRM Processor
   useEffect(() => {
     const initializeSystem = async () => {
-      setProcessingStatus('Initializing advanced CRM system...');
+      setProcessingStatus('Initializing CRM system...');
       try {
-        await initializeAttributeIds();
-        setProcessingStatus('✅ Advanced CRM system ready');
+        // Replace with your actual Attio API token and Groq API key
+        //const API_TOKEN = 'e01cca9d5d70d62535755e3f1609118082790728f8c98dbd0b3f9cce1aae3f53';
+        const API_TOKEN = '4c1cd47f29e1e3f9e701251d68ee74d4a233f05013635d04988f812b9ea4664e';
+        const GROQ_API_KEY = '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'; // You need to add your Groq API key
+        
+        const crmInstance = new AttioCRMProcessor(API_TOKEN, GROQ_API_KEY);
+        await crmInstance.initializeSchema();
+        crmRef.current = crmInstance;
+        
+        setProcessingStatus('✅ CRM system ready');
         setTimeout(() => setProcessingStatus(''), 3000);
       } catch (err) {
         setProcessingStatus('❌ System initialization failed');
         console.error('Initialization error:', err);
       }
     };
-    
     initializeSystem();
   }, []);
 
+  // UPDATED: Process conversation using processText method
   const processAdvancedCRM = async (text) => {
     setProcessingStatus('🧠 Analyzing conversation with AI...');
-    
-    try {
-      // Get conversation context
-      const context = conversationContextRef.current.getContext();
-      
-      // Send to advanced AI parser
-      const updates = await sendToAdvancedDeepSeek(text, context);
-      console.log('🎯 Advanced AI extracted:', updates);
-      
-      if (updates.length === 0) {
-        setProcessingStatus('ℹ️ No actionable data found');
-        return;
-      }
 
-      setProcessingStatus('💾 Updating Attio CRM...');
+    try {
+      const crm = crmRef.current;
+      if (!crm) throw new Error("CRM not initialized");
+
+      // Use the processText method from CRMConnector.js
+      const results = await crm.processText(text);
+      console.log('🎯 CRM Results:', results);
+
+      // Extract results from the standard structure
+      const successful = results.results?.filter(r => r.success) || [];
+      const tasks = successful.filter(r => r.action?.includes('task'));
       
-      // Send to Attio
-      await sendToAttio(updates);
-      
-      // Update conversation context
-      conversationContextRef.current.updateContext(updates);
-      
-      // Update stats and analysis
-      const dealUpdates = updates.filter(item => item.type === 'deal');
-      const personUpdates = updates.filter(item => item.type === 'person');
-      const taskUpdates = updates.filter(item => item.type === 'task');
-      
-      const totalValue = dealUpdates.reduce((sum, deal) => sum + (deal.value || 0), 0);
+      // Update stats with the standard structure
+      const dealUpdates = successful.filter(item => 
+        item.object?.includes('deal') || 
+        item.object?.includes('opportunity')
+      );
+      const personUpdates = successful.filter(item => 
+        item.object?.includes('people') || 
+        item.object?.includes('person') || 
+        item.object?.includes('contact')
+      );
       
       setStats(prevStats => ({
         dealsProcessed: prevStats.dealsProcessed + dealUpdates.length,
         contactsManaged: prevStats.contactsManaged + personUpdates.length,
-        tasksCreated: prevStats.tasksCreated + taskUpdates.length,
-        totalValue: prevStats.totalValue + totalValue
+        tasksCreated: prevStats.tasksCreated + tasks.length,
+        totalValue: prevStats.totalValue // Would need to be calculated from actual deal values
       }));
-      
+
       setLastAnalysis({
         timestamp: new Date().toISOString(),
-        summary: generateAnalysisSummary(updates),
-        updates: updates
+        summary: generateAnalysisSummary(successful, tasks),
+        updates: successful
       });
-      
-      setProcessingStatus('✅ CRM updated successfully');
+
+      setProcessingStatus(`✅ CRM updated: ${successful.length} records processed`);
       setTimeout(() => setProcessingStatus(''), 5000);
-      
+
     } catch (error) {
-      console.error('❌ Advanced CRM processing failed:', error);
+      console.error('❌ CRM processing failed:', error);
       setProcessingStatus('❌ Processing failed - check console');
     }
   };
 
-  const generateAnalysisSummary = (updates) => {
-    const deals = updates.filter(item => item.type === 'deal');
-    const people = updates.filter(item => item.type === 'person');
-    const tasks = updates.filter(item => item.type === 'task');
-    const relationships = updates.filter(item => item.type === 'relationship');
+  // Generate summary from results
+  const generateAnalysisSummary = (updates, tasks) => {
+    const dealTypes = ['deal', 'opportunity'];
+    const personTypes = ['people', 'person', 'contact'];
+    
+    const deals = updates.filter(item => 
+      dealTypes.some(type => item.object?.includes(type))
+    );
+    const people = updates.filter(item => 
+      personTypes.some(type => item.object?.includes(type))
+    );
     
     let summary = [];
     
     if (deals.length > 0) {
-      const totalValue = deals.reduce((sum, deal) => sum + (deal.value || 0), 0);
-      summary.push(`${deals.length} deal(s) worth $${totalValue.toLocaleString()}`);
+      summary.push(`${deals.length} deal(s) processed`);
     }
     
     if (people.length > 0) {
-      const sentiments = people.map(p => p.sentiment).filter(Boolean);
-      const positiveSentiment = sentiments.filter(s => s === 'positive').length;
-      summary.push(`${people.length} contact(s), ${positiveSentiment} positive`);
+      summary.push(`${people.length} contact(s) updated`);
     }
     
     if (tasks.length > 0) {
-      const highPriority = tasks.filter(t => t.priority === 'high').length;
-      summary.push(`${tasks.length} task(s), ${highPriority} high priority`);
+      summary.push(`${tasks.length} task(s) created`);
     }
     
-    if (relationships.length > 0) {
-      summary.push(`${relationships.length} relationship update(s)`);
+    if (summary.length === 0) {
+      summary.push('Records processed successfully');
     }
     
     return summary.join(' • ');
@@ -180,7 +185,7 @@ const AdvancedSpeechRecorder = () => {
 
       const finalText = crmCaptureRef.current.trim();
       if (finalText.length > 10) {
-        console.log('🔁 Processing advanced CRM content:', finalText);
+        console.log('🔁 Processing CRM content:', finalText);
         await processAdvancedCRM(finalText);
       } else {
         setProcessingStatus('ℹ️ No substantial CRM content captured');
@@ -220,7 +225,7 @@ const AdvancedSpeechRecorder = () => {
 
         const clean = final.toLowerCase().trim();
         if (!triggeredRef.current && clean.includes(triggerPhrase.toLowerCase())) {
-          console.log("✅ Advanced CRM trigger detected");
+          console.log("✅ CRM trigger detected");
           triggeredRef.current = true;
           crmCaptureRef.current = '';
           setProcessingStatus('🎯 CRM mode activated - listening for business intelligence...');
@@ -262,6 +267,41 @@ const AdvancedSpeechRecorder = () => {
       <div className="status-text">
         {isRecording ? 'Recording... say "initiate CRM" to start logging' : 'Click to start recording'}
       </div>
+      
+      {/* Status display */}
+      {processingStatus && (
+        <div className="processing-status" style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          background: 'rgba(0,0,0,0.8)',
+          color: 'white',
+          padding: '10px',
+          borderRadius: '5px',
+          fontSize: '12px',
+          maxWidth: '300px'
+        }}>
+          {processingStatus}
+        </div>
+      )}
+      
+      {/* Stats display */}
+      {stats.dealsProcessed > 0 && (
+        <div className="stats-display" style={{
+          position: 'fixed',
+          bottom: '100px',
+          left: '20px',
+          background: 'rgba(0,0,0,0.8)',
+          color: 'white',
+          padding: '15px',
+          borderRadius: '5px',
+          fontSize: '14px'
+        }}>
+          <div>Deals: {stats.dealsProcessed}</div>
+          <div>Contacts: {stats.contactsManaged}</div>
+          <div>Tasks: {stats.tasksCreated}</div>
+        </div>
+      )}
     </div>
   );
 };
