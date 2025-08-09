@@ -1,60 +1,23 @@
 // attio.js
 const ATTIO_API_BASE = "https://api.attio.com/v2";
-const BEARER_TOKEN = "Bearer e01cca9d5d70d62535755e3f1609118082790728f8c98dbd0b3f9cce1aae3f53";
+const BEARER_TOKEN = process.env.REACT_APP_ATTIO_DUMMY || "Bearer <REDACTED>";
 
 const objectCache = {}; // caches object_ids like "people"
 const attributeCache = {}; // caches attribute mappings
 
 // You'll need to get these from your Attio workspace
 const ATTRIBUTE_IDS = {
-  name: "3a2d79ac-1c54-4d1d-9bd1-df92ba80052f",
-  email: "4ab52dd0-edfe-4eea-b73c-561028076ea6", // You'll need to find this ID
-  phone: "57e614f6-a910-4df8-a7a5-f175d85a8825", // You'll need to find this ID
-  notes: "168ddd0a-6dc6-4aff-8939-60dcfe1cdf41"  // You'll need to find this ID
+  name: "<REDACTED_NAME_ID>",
+  email: "<REDACTED_EMAIL_ID>", // You'll need to find this ID
+  phone: "<REDACTED_PHONE_ID>", // You'll need to find this ID
+  notes: "<REDACTED_NOTES_ID>", // You'll need to find this ID
 };
 
-
 async function sendToAttio(updates) {
-  console.log('🔄 Processing updates:', updates);
-  
-  // Group updates by person to handle linking
-  const personUpdates = updates.filter(item => item.type === "person");
-  const taskUpdates = updates.filter(item => item.type === "task");
-  
-  const processedPersons = {};
-  
-  // Process persons first
-  for (const item of personUpdates) {
-    try {
-      ensureFields(item);
-      const personId = await upsertPerson(item);
-      processedPersons[item.name] = personId;
-    } catch (err) {
-      console.error("❌ Failed to process person:", item, err);
-    }
-  }
-  
-  // Process tasks and link to persons
-  for (const item of taskUpdates) {
-    try {
-      ensureFields(item);
-      
-      // Find the person to link to
-      let linkedPersonId = null;
-      if (item.link_to_person_name) {
-        linkedPersonId = processedPersons[item.link_to_person_name];
-        if (!linkedPersonId) {
-          // Try to find existing person
-          const existingPerson = await queryPersonByName(item.link_to_person_name);
-          linkedPersonId = existingPerson?.id?.record_id;
-        }
-      }
-      
-      await upsertTask(item, linkedPersonId);
-    } catch (err) {
-      console.error("❌ Failed to process task:", item, err);
-    }
-  }
+  console.warn(
+    "Client-side Attio calls are deprecated. Use /api/attio routes."
+  );
+  return;
 }
 
 function ensureFields(item) {
@@ -76,7 +39,7 @@ function ensureFields(item) {
 function parseDateTime(date, time) {
   try {
     let d = new Date();
-    
+
     if (date?.toLowerCase().includes("tomorrow")) {
       d.setDate(d.getDate() + 1);
     } else if (date?.toLowerCase().includes("next week")) {
@@ -106,7 +69,7 @@ async function getObjectIdBySlug(slug) {
   if (objectCache[slug]) return objectCache[slug];
 
   const res = await fetch(`${ATTIO_API_BASE}/objects/${slug}`, {
-    headers: { Authorization: BEARER_TOKEN }
+    headers: { Authorization: BEARER_TOKEN },
   });
 
   if (!res.ok) {
@@ -125,16 +88,19 @@ async function getObjectIdBySlug(slug) {
 // ========== PERSONS ==========
 
 async function upsertPerson(data) {
-  console.log('🔄 Upserting person:', data.name);
-  
+  console.log("🔄 Upserting person:", data.name);
+
   // First, try to find existing person
   const existingPerson = await queryPersonByName(data.name);
-  
+
   if (existingPerson) {
-    console.log('👤 Found existing person, updating:', existingPerson.id.record_id);
+    console.log(
+      "👤 Found existing person, updating:",
+      existingPerson.id.record_id
+    );
     return await updatePerson(existingPerson.id.record_id, data);
   } else {
-    console.log('👤 Creating new person:', data.name);
+    console.log("👤 Creating new person:", data.name);
     return await createPerson(data);
   }
 }
@@ -144,11 +110,13 @@ async function createPerson(data) {
   const fullName = `${data.first_name || ""} ${data.last_name || ""}`.trim();
 
   const values = {
-    [ATTRIBUTE_IDS.name]: [{
-      first_name: data.first_name || "Unknown",
-      last_name: data.last_name || "",
-      full_name: fullName
-    }]
+    [ATTRIBUTE_IDS.name]: [
+      {
+        first_name: data.first_name || "Unknown",
+        last_name: data.last_name || "",
+        full_name: fullName,
+      },
+    ],
   };
 
   // Add email if provided
@@ -172,9 +140,9 @@ async function createPerson(data) {
     method: "POST",
     headers: {
       Authorization: BEARER_TOKEN,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: payload
+    body: payload,
   });
 
   const json = await res.json();
@@ -190,17 +158,19 @@ async function createPerson(data) {
 
 async function updatePerson(recordId, data) {
   const peopleId = await getObjectIdBySlug("people");
-  
+
   const values = {};
-  
+
   // Update name if provided
   if (data.first_name || data.last_name) {
     const fullName = `${data.first_name || ""} ${data.last_name || ""}`.trim();
-    values[ATTRIBUTE_IDS.name] = [{
-      first_name: data.first_name || "Unknown",
-      last_name: data.last_name || "",
-      full_name: fullName
-    }];
+    values[ATTRIBUTE_IDS.name] = [
+      {
+        first_name: data.first_name || "Unknown",
+        last_name: data.last_name || "",
+        full_name: fullName,
+      },
+    ];
   }
 
   // Update email if provided
@@ -219,20 +189,23 @@ async function updatePerson(recordId, data) {
   }
 
   if (Object.keys(values).length === 0) {
-    console.log('ℹ️ No updates needed for person');
+    console.log("ℹ️ No updates needed for person");
     return recordId;
   }
 
   const payload = JSON.stringify({ data: { values } });
 
-  const res = await fetch(`${ATTIO_API_BASE}/objects/${peopleId}/records/${recordId}`, {
-    method: "PATCH",
-    headers: {
-      Authorization: BEARER_TOKEN,
-      "Content-Type": "application/json"
-    },
-    body: payload
-  });
+  const res = await fetch(
+    `${ATTIO_API_BASE}/objects/${peopleId}/records/${recordId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: BEARER_TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: payload,
+    }
+  );
 
   const json = await res.json();
   if (!res.ok) {
@@ -251,25 +224,27 @@ async function queryPersonByName(name) {
   // Try exact match first
   let payload = {
     filter: {
-      and: [{
-        attribute: ATTRIBUTE_IDS.name,
-        query: name
-      }]
+      and: [
+        {
+          attribute: ATTRIBUTE_IDS.name,
+          query: name,
+        },
+      ],
     },
-    limit: 1
+    limit: 1,
   };
 
   let res = await fetch(`${ATTIO_API_BASE}/objects/${peopleId}/records/query`, {
     method: "POST",
     headers: {
       Authorization: BEARER_TOKEN,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   let json = await res.json();
-  
+
   if (json.data && json.data.length > 0) {
     return json.data[0];
   }
@@ -279,29 +254,32 @@ async function queryPersonByName(name) {
   if (firstName) {
     payload = {
       filter: {
-        and: [{
-          attribute: ATTRIBUTE_IDS.name,
-          query: firstName
-        }]
+        and: [
+          {
+            attribute: ATTRIBUTE_IDS.name,
+            query: firstName,
+          },
+        ],
       },
-      limit: 5
+      limit: 5,
     };
 
     res = await fetch(`${ATTIO_API_BASE}/objects/${peopleId}/records/query`, {
       method: "POST",
       headers: {
         Authorization: BEARER_TOKEN,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     json = await res.json();
-    
+
     // Look for best match
     if (json.data && json.data.length > 0) {
       for (const person of json.data) {
-        const personName = person.values[ATTRIBUTE_IDS.name]?.[0]?.full_name?.toLowerCase();
+        const personName =
+          person.values[ATTRIBUTE_IDS.name]?.[0]?.full_name?.toLowerCase();
         if (personName?.includes(name.toLowerCase())) {
           return person;
         }
@@ -315,26 +293,28 @@ async function queryPersonByName(name) {
 // ========== TASKS ==========
 
 async function upsertTask(data, linkedPersonId = null) {
-  console.log('📋 Creating task:', data.description);
-  
+  console.log("📋 Creating task:", data.description);
+
   const taskContent = data.description;
-  
+
   const payload = {
     data: {
       content: taskContent,
       format: "plaintext",
       deadline_at: data.due_date,
       is_completed: false,
-      assignees: []
-    }
+      assignees: [],
+    },
   };
 
   // Link to person if we have an ID
   if (linkedPersonId) {
-    payload.data.linked_records = [{
-      target_object: "people",
-      target_record_id: linkedPersonId
-    }];
+    payload.data.linked_records = [
+      {
+        target_object: "people",
+        target_record_id: linkedPersonId,
+      },
+    ];
   }
 
   console.log("📦 Task payload:", JSON.stringify(payload, null, 2));
@@ -343,9 +323,9 @@ async function upsertTask(data, linkedPersonId = null) {
     method: "POST",
     headers: {
       Authorization: BEARER_TOKEN,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   const json = await res.json();
@@ -365,14 +345,14 @@ async function getAttributeIds(objectSlug) {
 
   const objectId = await getObjectIdBySlug(objectSlug);
   const res = await fetch(`${ATTIO_API_BASE}/objects/${objectId}/attributes`, {
-    headers: { Authorization: BEARER_TOKEN }
+    headers: { Authorization: BEARER_TOKEN },
   });
 
   const json = await res.json();
   const attributes = {};
-  
+
   if (json.data) {
-    json.data.forEach(attr => {
+    json.data.forEach((attr) => {
       attributes[attr.api_slug] = attr.id.attribute_id;
     });
   }
@@ -385,18 +365,19 @@ async function getAttributeIds(objectSlug) {
 // Call this once to populate your attribute IDs
 async function initializeAttributeIds() {
   try {
-    const peopleAttributes = await getAttributeIds('people');
-    console.log('People attributes:', peopleAttributes);
-    
+    const peopleAttributes = await getAttributeIds("people");
+    console.log("People attributes:", peopleAttributes);
+
     // Update ATTRIBUTE_IDS with actual values
     ATTRIBUTE_IDS.email = peopleAttributes.email_addresses;
     ATTRIBUTE_IDS.phone = peopleAttributes.phone_numbers;
     ATTRIBUTE_IDS.notes = peopleAttributes.notes;
-    
-    console.log('✅ Attribute IDs initialized');
+
+    console.log("✅ Attribute IDs initialized");
   } catch (err) {
-    console.error('❌ Failed to initialize attribute IDs:', err);
+    console.error("❌ Failed to initialize attribute IDs:", err);
   }
 }
 
 export { sendToAttio, initializeAttributeIds };
+export { ensureFields };
