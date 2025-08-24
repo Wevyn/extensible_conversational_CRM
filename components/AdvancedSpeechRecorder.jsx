@@ -149,7 +149,7 @@ const AdvancedSpeechRecorder = () => {
   const initializeCRM = async (token) => {
     setProcessingStatus('🔧 Initializing CRM system...');
     try {
-      const GROQ_API_KEY = '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';
+      const GROQ_API_KEY = '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';
       const crmInstance = new AttioCRMProcessor(token, GROQ_API_KEY);
       await crmInstance.initializeSchema();
       crmRef.current = crmInstance;
