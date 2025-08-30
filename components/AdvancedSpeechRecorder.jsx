@@ -149,26 +149,32 @@ const AdvancedSpeechRecorder = () => {
   const initializeCRM = async (token) => {
     setProcessingStatus('🔧 Initializing CRM system...');
     try {
-      //const GROQ_API_KEY = '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';
-      //const crmInstance = new AttioCRMProcessor(token, GROQ_API_KEY);
-      const groq = async (endpoint, payload) => {
-        const res = await fetch('/api/groq/proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint, payload }),
-          cache: 'no-store'
-        });
-        if (!res.ok) {
-          const t = await res.text().catch(()=>'');
-          throw new Error(`GROQ proxy failed: ${res.status} ${t}`);
+      // Step 1: build CRM with NO groq so OAuth/Attio never depends on it
+      const crmInstance = new AttioCRMProcessor(token, null);
+      await crmInstance.initializeSchema();   // only calls Attio, not Groq
+      // Step 2: now wire the groq proxy (won’t run until you process text)
+      crmInstance.groqFetch = async (endpoint, payload) => {
+        try {
+          const res = await fetch('/api/groq/proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint, payload }),
+            cache: 'no-store'
+          });
+          if (!res.ok) {
+            const t = await res.text().catch(()=>'');
+            throw new Error(`GROQ proxy failed: ${res.status} ${t}`);
+          }
+          return res.json();
+        } catch (e) {
+          // Do NOT tank the session here. Let processing show the error later.
+          console.error('GROQ proxy error:', e);
+          // Return a safe empty completion so downstream JSON.parse won’t crash.
+          return { choices: [{ message: { content: "{}" } }] };
         }
-        return res.json();
       };
-      const crmInstance = new AttioCRMProcessor(token, groq);
-
-      await crmInstance.initializeSchema();
       crmRef.current = crmInstance;
-
+  
       setProcessingStatus('✅ CRM system ready');
       setTimeout(() => setProcessingStatus(''), 3000);
     } catch (err) {
@@ -176,6 +182,7 @@ const AdvancedSpeechRecorder = () => {
       console.error('Initialization error:', err);
     }
   };
+
 
   // === Everything below here (processing/UX/recording) stays functionally the same ===
   const processAdvancedCRM = async (text) => {
