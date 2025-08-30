@@ -1,4 +1,3 @@
-// app/api/groq/proxy/route.js
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -13,7 +12,7 @@ export async function POST(req) {
 
     const { endpoint, payload } = await req.json();
 
-    // Allow only specific Groq endpoints (tighten as needed)
+    // Allow-list only the endpoints you actually use
     const allowed = new Set(["chat/completions", "responses"]);
     if (!allowed.has(endpoint)) {
       return NextResponse.json({ error: "Unsupported endpoint" }, { status: 400 });
