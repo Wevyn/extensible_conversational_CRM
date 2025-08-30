@@ -149,8 +149,23 @@ const AdvancedSpeechRecorder = () => {
   const initializeCRM = async (token) => {
     setProcessingStatus('🔧 Initializing CRM system...');
     try {
-      const GROQ_API_KEY = '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';
-      const crmInstance = new AttioCRMProcessor(token, GROQ_API_KEY);
+      //const GROQ_API_KEY = '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';
+      //const crmInstance = new AttioCRMProcessor(token, GROQ_API_KEY);
+      const groq = async (endpoint, payload) => {
+        const res = await fetch('/api/groq/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint, payload }),
+          cache: 'no-store'
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(()=>'');
+          throw new Error(`GROQ proxy failed: ${res.status} ${t}`);
+        }
+        return res.json();
+      };
+      const crmInstance = new AttioCRMProcessor(token, groq);
+
       await crmInstance.initializeSchema();
       crmRef.current = crmInstance;
 
