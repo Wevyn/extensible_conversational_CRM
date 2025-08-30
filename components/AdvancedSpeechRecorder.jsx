@@ -155,7 +155,7 @@ const AdvancedSpeechRecorder = () => {
       // Step 2: now wire the groq proxy (won’t run until you process text)
       crmInstance.groqFetch = async (endpoint, payload) => {
         try {
-          const res = await fetch('/api/groq/proxy', {
+          const res = await fetch('/integrations/groq/proxy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ endpoint, payload }),
